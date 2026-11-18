@@ -1,4 +1,4 @@
-CREATE TABLE if NOT EXISTS load_batches (
+CREATE TABLE IF NOT EXISTS load_batches (
     load_id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMPTZ,
@@ -11,9 +11,8 @@ CREATE TABLE if NOT EXISTS load_batches (
     )
 );
 
-
-CREATE TABLE if NOT EXISTS users (
-    user_id INT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS users (
+    id INT PRIMARY KEY,
     first_name TEXT,
     country TEXT,
     traffic_source TEXT,
@@ -21,10 +20,9 @@ CREATE TABLE if NOT EXISTS users (
     load_id INT NOT NULL REFERENCES load_batches(load_id)
 );
 
-
-CREATE TABLE if NOT EXISTS products (
-    product_id INT PRIMARY KEY,
-    product_name TEXT,
+CREATE TABLE IF NOT EXISTS products (
+    id INT PRIMARY KEY,
+    name TEXT,
     category TEXT,
     brand TEXT,
     department TEXT,
@@ -36,36 +34,32 @@ CREATE TABLE if NOT EXISTS products (
     CONSTRAINT ck_products_retail_price CHECK (retail_price >= 0)
 );
 
-
-
-CREATE TABLE if NOT EXISTS orders (
+CREATE TABLE IF NOT EXISTS orders (
     order_id INT PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES users(user_id),
-    order_status TEXT NOT NULL,
+    user_id INT NOT NULL REFERENCES users(id),
+    status TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     load_id INT NOT NULL REFERENCES load_batches(load_id),
 
-    CONSTRAINT ck_orders_status CHECK (order_status IN ('Cancelled', 'Complete', 'Processing', 'Returned', 'Shipped'))
+    CONSTRAINT ck_orders_status CHECK (status IN ('Cancelled', 'Complete', 'Processing', 'Returned', 'Shipped'))
 );
 
-
-CREATE TABLE if NOT EXISTS order_items (
-    order_item_id INT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS order_items (
+    id INT PRIMARY KEY,
     order_id INT NOT NULL REFERENCES orders(order_id),
-    product_id INT NOT NULL REFERENCES products(product_id),
-    order_item_status TEXT NOT NULL,
+    product_id INT NOT NULL REFERENCES products(id),
+    status TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     sale_price NUMERIC(10, 2) NOT NULL,
     load_id INT NOT NULL REFERENCES load_batches(load_id),
 
-    CONSTRAINT ck_order_items_status CHECK (order_item_status IN ('Cancelled', 'Complete', 'Processing', 'Returned', 'Shipped')),
+    CONSTRAINT ck_order_items_status CHECK (status IN ('Cancelled', 'Complete', 'Processing', 'Returned', 'Shipped')),
     CONSTRAINT ck_order_items_sale_price CHECK (sale_price >= 0)
 );
 
-
-CREATE TABLE if NOT EXISTS events (
-    event_id INT PRIMARY KEY,
-    user_id INT REFERENCES users(user_id),
+CREATE TABLE IF NOT EXISTS events (
+    id BIGINT PRIMARY KEY,
+    user_id INT REFERENCES users(id),
     session_id TEXT NOT NULL,
     sequence_number INT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,

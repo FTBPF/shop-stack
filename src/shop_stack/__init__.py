@@ -1,7 +1,8 @@
 import click
-from sqlalchemy.exc import OperationalError
+from pathlib import Path
+from sqlalchemy.exc import OperationalError, IntegrityError
 
-from . import db
+from . import db, loading
 
 
 @click.group()
@@ -40,3 +41,26 @@ def init(drop):
     else:
         click.echo("Schema already exists.")
 
+
+@main.command()
+@click.option(
+    "--source",
+    type=click.Path(path_type=Path),
+    default=Path("extract"),
+    show_default=True,
+    help="Directory containing source Parquet or CSV files.",
+)
+def load(source):
+    """Load extracted files into the PostgreSQL OLTP database."""
+    engine = db.get_engine()
+    try:
+        counts = loading.load_all(engine, source)
+    except OperationalError as e:
+        raise click.ClickException(f"Database connection failed: {e.orig}")
+    except IntegrityError as e:
+        raise click.ClickException(f"Data validation failed: {e.orig}")
+    except (FileNotFoundError, RuntimeError, ValueError) as e:
+        raise click.ClickException(str(e))
+
+    for table, count in counts.items():
+        click.echo(f"Loaded {count} rows into {table}.")
