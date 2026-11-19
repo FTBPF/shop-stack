@@ -17,29 +17,31 @@ def db_group():
 
 
 @db_group.command()
-@click.option(
-    "--drop",
-    is_flag=True,
-    help="Drop existing schema before initializing."
-)
-def init(drop):
+def init():
     """Create the schema (does nothing if it already exists)."""
     engine = db.get_engine()
-    try:
-        if drop:
+    with engine.begin() as conn:
+        try:
+            db.init_schema(conn)
+            click.echo("Created Schema.")
+        except OperationalError as e:
+            raise click.ClickException(f"Failed to init the database: {e}")
+
+
+@db_group.command()
+def drop():
+    """Drops the schema (does nothing if it doesn't exist)."""
+    engine = db.get_engine()
+    with engine.begin() as conn:
+        try:
             click.confirm(
                 "This deletes all shop-stack tables and their data. Continue?",
                 abort=True,
             )
-            db.drop_schema(engine)
+            db.drop_schema(conn)
             click.echo("Dropped existing schema.")
-        created = db.init_schema(engine)
-    except OperationalError as e:
-        raise click.ClickException(f"Failed to init the database: {e}")
-    if created:
-        click.echo("Schema created.")
-    else:
-        click.echo("Schema already exists.")
+        except OperationalError as e:
+                    raise click.ClickException(f"Failed to drop the database: {e}")
 
 
 @main.command()
