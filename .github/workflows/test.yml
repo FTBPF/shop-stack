@@ -23,7 +23,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      SHOP_TEST_DB_URL: postgresql+psycopg:///ff.shop-stack-test
+      SHOP_TEST_DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/shop-stack-test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
