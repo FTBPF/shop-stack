@@ -103,6 +103,9 @@ def load_table(conn, table, source_dir, load_id):
 
 def load_all(conn, source_dir):
     """Carrega todos os ficheiros de todas as tabelas, numa só transação."""
+    if not source_dir.is_dir():
+        raise FileNotFoundError(f"Directory not found: {source_dir}")
+    
     load_id = conn.execute(
         sa.text("INSERT INTO load_batches DEFAULT VALUES RETURNING load_id")
     ).scalar_one()

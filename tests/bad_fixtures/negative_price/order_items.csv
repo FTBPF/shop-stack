@@ -1,0 +1,2 @@
+id,order_id,user_id,product_id,status,created_at,sale_price
+1000,100,1,10,Complete,2025-01-05 11:00:00,-60.00

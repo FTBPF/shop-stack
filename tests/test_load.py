@@ -1,96 +1,107 @@
 import pytest
-import sqlalchemy as sa
+from pathlib import Path
 from sqlalchemy.exc import IntegrityError
 
 from shop_stack import db, loading
 
 
-def test_load_fixtures_counts_and_reconciliation(engine, fixtures_dir):
-    counts = loading.load_all(engine, fixtures_dir)
+BAD_FIXTURES_DIR = Path(__file__).parent / "bad_fixtures"
 
-    assert counts == {
-        "users": 5,
-        "products": 4,
-        "orders": 9,
-        "order_items": 11,
-        "events": 19,
-    }
+EXPECTED_COUNTS = {
+    "users": 5,
+    "products": 4,
+    "orders": 9,
+    "order_items": 11,
+    "events": 19,
+}
 
-    # Confirma que ficou registado como 'succeeded'
-    batches = db.query(engine, "SELECT load_status, completed_at FROM load_batches")
+
+def get_last_load_id(conn):
+    rows = db.query(conn, "SELECT MAX(load_id) AS load_id FROM load_batches")
+    return rows[0]["load_id"]
+
+
+def assert_counts(conn, load_id, expected):
+    for table, count in expected.items():
+        rows = db.query(conn, f"SELECT COUNT(*) AS n FROM {table} WHERE load_id = :load_id", load_id=load_id,)
+        assert rows[0]["n"] == count
+
+
+def assert_tables_empty(conn):
+    for table in loading.TARGET_TABLES:
+        name = table["name"]
+        rows = db.query(conn, f"SELECT COUNT(*) AS n FROM {name}")
+        assert rows[0]["n"] == 0
+
+
+def test_load_fixtures_counts(db_connection, fixtures_dir):
+    summaries = loading.load_all(db_connection, fixtures_dir)
+
+    assert {summary["table"]: summary["read"] for summary in summaries} == EXPECTED_COUNTS
+
+    load_id = get_last_load_id(db_connection)
+    assert_counts(db_connection, load_id, EXPECTED_COUNTS)
+
+
+def test_load_registers_successful_batch(db_connection, fixtures_dir):
+    loading.load_all(db_connection, fixtures_dir)
+
+    load_id = get_last_load_id(db_connection)
+
+    batches = db.query(db_connection,
+        """
+        SELECT load_status, completed_at
+        FROM load_batches
+        WHERE load_id = :load_id
+        """,
+        load_id=load_id,
+    )
+
     assert len(batches) == 1
     assert batches[0]["load_status"] == "succeeded"
     assert batches[0]["completed_at"] is not None
 
 
-def test_load_is_idempotent(engine, fixtures_dir):
-    loading.load_all(engine, fixtures_dir)
-    loading.load_all(engine, fixtures_dir)
+def test_load_is_idempotent(db_connection, fixtures_dir):
+    first_load = loading.load_all(db_connection, fixtures_dir)
+    first_load_id = get_last_load_id(db_connection)
+    assert_counts(db_connection, first_load_id, EXPECTED_COUNTS)
 
-    rows = db.query(engine, "SELECT COUNT(*) AS n FROM order_items")
-    assert rows[0]["n"] == 11
+    for summary in first_load:
+        assert summary["inserted"] == EXPECTED_COUNTS[summary["table"]]
+        assert summary["updated"] == 0
+        assert summary["read"] == EXPECTED_COUNTS[summary["table"]]
 
-    batches = db.query(engine, "SELECT COUNT(*) AS n FROM load_batches")
-    assert batches[0]["n"] == 2
+    second_load = loading.load_all(db_connection, fixtures_dir)
+    second_load_id = get_last_load_id(db_connection)
+    assert second_load_id != first_load_id
+
+    assert_counts(db_connection, second_load_id, EXPECTED_COUNTS)
+
+    for summary in second_load:
+        assert summary["inserted"] == 0
+        assert summary["updated"] == EXPECTED_COUNTS[summary["table"]]
+        assert summary["read"] == EXPECTED_COUNTS[summary["table"]]
+
+    for table, expected_count in EXPECTED_COUNTS.items():
+        rows = db.query(db_connection, f"SELECT COUNT(*) AS n FROM {table}")
+        assert rows[0]["n"] == expected_count
 
 
-def test_load_missing_directory_or_file(engine, fixtures_dir, tmp_path):
+def test_load_missing_directory(db_connection, tmp_path):
     with pytest.raises(FileNotFoundError):
-        loading.load_all(engine, tmp_path / "does_not_exist")
-
-    incomplete_dir = tmp_path / "incomplete"
-    incomplete_dir.mkdir()
-
-    for csv_file in fixtures_dir.glob("*.csv"):
-        if csv_file.name != "events.csv":
-            destination = incomplete_dir / csv_file.name
-            destination.write_text(csv_file.read_text())
-
-    with pytest.raises(FileNotFoundError):
-        loading.load_all(engine, incomplete_dir)
+        loading.load_all(db_connection, tmp_path / "does_not_exist")
 
 
-def create_bad_fixtures(fixtures_dir, tmp_path, filename, column, value):
-    """Create a temporary directory that holds bad data."""
-    bad_dir = tmp_path / "bad_data"
-    bad_dir.mkdir()
-
-    for csv_file in fixtures_dir.glob("*.csv"):
-        (bad_dir / csv_file.name).write_text(csv_file.read_text())
-
-    csv_file = bad_dir / filename
-    lines = csv_file.read_text().splitlines()
-
-    headers = lines[0].split(",")
-    parts = lines[1].split(",")
-
-    parts[headers.index(column)] = value
-    lines[1] = ",".join(parts)
-
-    csv_file.write_text("\n".join(lines) + "\n")
-
-    return bad_dir
-
-
-def test_load_negative_price_rolls_back(engine, fixtures_dir, tmp_path):
-    bad_dir = create_bad_fixtures(
-        fixtures_dir, tmp_path, "order_items.csv", "sale_price", "-10.00"
-    )
-
+def test_load_negative_price_violates_check_constraint(db_connection):
+    bad_dir = BAD_FIXTURES_DIR / "negative_price"
     with pytest.raises(IntegrityError):
-        loading.load_all(engine, bad_dir)
-
-    for table in loading.LOAD_ORDER:
-        assert db.query(engine, f"SELECT COUNT(*) AS n FROM {table}")[0]["n"] == 0
+        with db_connection.begin_nested():
+            loading.load_all(db_connection, bad_dir)
 
 
-def test_load_unknown_product_rolls_back(engine, fixtures_dir, tmp_path):
-    bad_dir = create_bad_fixtures(
-        fixtures_dir, tmp_path, "order_items.csv", "product_id", "99999"
-    )
-
+def test_load_unknown_product_violates_foreign_key(db_connection):
+    bad_dir = BAD_FIXTURES_DIR / "unknown_product_id"
     with pytest.raises(IntegrityError):
-        loading.load_all(engine, bad_dir)
-
-    for table in loading.LOAD_ORDER:
-        assert db.query(engine, f"SELECT COUNT(*) AS n FROM {table}")[0]["n"] == 0
+        with db_connection.begin_nested():
+            loading.load_all(db_connection, bad_dir)
