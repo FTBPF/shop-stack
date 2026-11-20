@@ -17,11 +17,16 @@ def test_db_url():
 
 
 @pytest.fixture
-def engine(test_db_url):
+def db_engine(test_db_url):
     # Garante que qualquer chamada interna (como o CLI) usa a base de dados de testes
-    engine = sa.create_engine(test_db_url)
-    db.drop_schema(engine)
-    yield engine
+    yield sa.create_engine(test_db_url)
+    
+@pytest.fixture
+def db_connection(db_engine):
+    with db_engine.begin() as conn:
+        db.init_schema(conn)
+        yield conn
+        db.drop_schema(conn)
 
 
 @pytest.fixture

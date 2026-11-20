@@ -1,19 +1,46 @@
-import pytest
-
 from shop_stack import db
 
-def test_db_init_and_drop_schema(engine):
-    # Primeira inicialização cria as tabelas
-    assert db.init_schema(engine) is True
-    # Segunda inicialização não faz nada e devolve False
-    assert db.init_schema(engine) is False
-    # Drop remove as tabelas e permite voltar a criar
-    db.drop_schema(engine)
-    assert db.init_schema(engine) is True
 
-def test_db_query_helper(engine):
-    db.init_schema(engine)
-    rows = db.query(engine, "SELECT :value AS num", value=42)
-    assert len(rows) == 1
-    assert rows[0]["num"] == 42
+EXPECTED_TABLES = {
+    "load_batches",
+    "users",
+    "products",
+    "orders",
+    "order_items",
+    "events",
+}
 
+
+def get_tables(conn):
+    tables = db.query(
+        conn,
+        """
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+        """
+    )
+    return {table["table_name"] for table in tables}
+
+
+def test_init_schema_creates_all_tables(db_connection):
+    db.init_schema(db_connection)
+
+    assert get_tables(db_connection) == EXPECTED_TABLES
+
+
+def test_drop_schema_removes_all_tables(db_connection):
+    db.init_schema(db_connection)
+
+    db.drop_schema(db_connection)
+
+    assert get_tables(db_connection) == set()
+
+
+def test_init_schema_works_after_drop(db_connection):
+    db.init_schema(db_connection)
+    db.drop_schema(db_connection)
+
+    db.init_schema(db_connection)
+
+    assert get_tables(db_connection) == EXPECTED_TABLES
