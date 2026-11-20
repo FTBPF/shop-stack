@@ -55,14 +55,17 @@ def drop():
 def load(source):
     """Load extracted files into the PostgreSQL OLTP database."""
     engine = db.get_engine()
-    try:
-        counts = loading.load_all(engine, source)
-    except OperationalError as e:
-        raise click.ClickException(f"Database connection failed: {e.orig}")
-    except IntegrityError as e:
-        raise click.ClickException(f"Data validation failed: {e.orig}")
-    except (FileNotFoundError, RuntimeError, ValueError) as e:
-        raise click.ClickException(str(e))
-
-    for table, count in counts.items():
-        click.echo(f"Loaded {count} rows into {table}.")
+    with engine.begin() as conn:
+        try:
+            summaries = loading.load_all(conn, source)
+        except Exception as e:
+            raise click.ClickException(str(e))
+        for summary in summaries:
+             click.echo(
+                f"{summary['table']}: "
+                f"before {summary['before']}, "
+                f"read {summary['read']}, "
+                f"inserted {summary['inserted']}, "
+                f"updated {summary['updated']}, "
+                f"after {summary['after']}."
+             )

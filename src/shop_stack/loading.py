@@ -2,113 +2,121 @@ from pathlib import Path
 import duckdb
 import sqlalchemy as sa
 
-from . import db
-
-LOAD_ORDER = ["users", "products", "orders", "order_items", "events"]
-
-DELETE_ORDER = ["events", "order_items", "orders", "products", "users"]
+SQL_DIR = Path(__file__).parent / "sql"
 
 READERS = {
     ".csv": "SELECT * FROM read_csv(?)",
     ".parquet": "SELECT * FROM read_parquet(?)",
 }
 
-INSERT_SQL = {
-    "users": """
-        INSERT INTO users (id, first_name, country, traffic_source, created_at, load_id)
-        VALUES (:id, :first_name, :country, :traffic_source, :created_at, :load_id)
-    """,
+TARGET_TABLES = [
+    {
+        "name": "users",
+        "file_prefix": "users",
+        "sql_file": "merge_users.sql",
+    },
+    {
+        "name": "products",
+        "file_prefix": "products",
+        "sql_file": "merge_products.sql",
+    },
+    {
+        "name": "orders",
+        "file_prefix": "orders",
+        "sql_file": "merge_orders.sql",
+    },
+    {
+        "name": "order_items",
+        "file_prefix": "order_items",
+        "sql_file": "merge_order_items.sql",
+    },
+    {
+        "name": "events",
+        "file_prefix": "events",
+        "sql_file": "merge_events.sql",
+    },
+]
 
-    "products": """
-        INSERT INTO products (id, name, category, brand, department, cost, retail_price, load_id)
-        VALUES (:id, :name, :category, :brand, :department, :cost, :retail_price, :load_id)
-    """,
 
-    "orders": """
-        INSERT INTO orders (order_id, user_id, status, created_at, load_id)
-        VALUES (:order_id, :user_id, :status, :created_at, :load_id)
-    """,
-
-    "order_items": """
-        INSERT INTO order_items (id, order_id, product_id, status, created_at, sale_price, load_id)
-        VALUES (:id, :order_id, :product_id, :status, :created_at, :sale_price, :load_id)
-    """,
-
-    "events": """
-        INSERT INTO events (id, user_id, session_id, sequence_number, created_at, event_type, load_id)
-        VALUES (:id, :user_id, :session_id, :sequence_number, :created_at, :event_type, :load_id)
-    """,
-}
-
-def find_source_file(source_dir, table):
-    """Procura {table}.parquet ou {table}.csv {source_dir}."""
+def files_matching(source_dir, file_prefix):
+    """Procura todos os ficheiros {file_prefix}*.parquet e {file_prefix}*.csv na pasta."""
+    files = []
     for file_type in (".parquet", ".csv"):
-        candidate = source_dir / f"{table}{file_type}"
-        if candidate.exists():
-            return candidate
-    raise FileNotFoundError(F"Missing source file for '{table}' in {source_dir}")
+        files.extend(source_dir.glob(f"{file_prefix}*{file_type}"))
+    return sorted(files)
 
 
-def read_rows(path):
-    """Lê um ficheiro usando o DuckDB e devolve uma lista de dicionários."""
-    result = duckdb.execute(READERS[path.suffix], [str(path)])
+def read_rows(filename, load_id):
+    """Lê um ficheiro CSV ou Parquet usando DuckDB e adiciona o load_id em cada linha."""
+    result = duckdb.execute(READERS[filename.suffix], [str(filename)])
     columns = [d[0] for d in result.description]
-    return [dict(zip(columns, row)) for row in result.fetchall()]
+    return [dict(zip(columns, row), load_id=load_id) for row in result.fetchall()]
 
 
-def prepare_rows(raw_rows, load_id):
-    return [
-        {**row, "load_id": load_id}
-        for row in raw_rows
-    ]
+def count_rows(conn, table_name):
+    """Devolve o número atual de linhas na tabela."""
+    return conn.execute(sa.text(f"SELECT COUNT(*) FROM {table_name}")).scalar_one()
 
 
-def load_all(engine: sa.Engine, source_dir: Path) -> dict[str, int]:
-    """Carrega todos os ficheiros para o PostgreSQL numa única transação e reconcilia contagens."""
-    if not source_dir.is_dir():
-        raise FileNotFoundError(f"Source directory does not exist: {source_dir}")
+def count_touched(conn, table_name, load_id):
+    return conn.execute(
+        sa.text(f"SELECT COUNT(*) FROM {table_name} WHERE load_id = :load_id"),
+        {"load_id": load_id},
+    ).scalar_one()
 
-    # Lê todos os ficheiros antes de abrir transação na base de dados
-    raw_data = {}
-    for table in LOAD_ORDER:
-        path = find_source_file(source_dir, table)
-        raw_data[table] = read_rows(path)
 
-    # Cria o esquema se ainda não existir
-    db.init_schema(engine)
+def read_sql(name):
+    """Lê um ficheiro .sql da pasta sql/."""
+    return (SQL_DIR / name).read_text()
 
-    counts = {}
 
-    # Executa limpeza, inserção e reconciliação numa única transação
-    # Não apagar a tabela load_batches para manter o histórico de todos os loads
-    with engine.begin() as conn:
-        for table in DELETE_ORDER:
-            conn.execute(sa.text(f"DELETE FROM {table}"))
+def merge_rows(conn, sql_file, rows):
+    """Executa o MERGE da tabela, uma vez por linha."""
+    if not rows:
+        return
+    conn.execute(sa.text(read_sql(sql_file)), rows)
 
-        load_id = conn.execute(
-            sa.text("INSERT INTO load_batches DEFAULT VALUES RETURNING load_id")
-        ).scalar_one()
 
-        for table in LOAD_ORDER:
-            rows = prepare_rows(raw_data[table], load_id)
-            if rows:
-                conn.execute(sa.text(INSERT_SQL[table]), rows)
+def load_table(conn, table, source_dir, load_id):
+    """Carrega todos os ficheiros e devolve as contagens."""
+    name = table["name"]
+    before = count_rows(conn, name)
+    read = 0
 
-            # Reconciliação de contagens
-            db_count = conn.execute(
-                sa.text(f"SELECT COUNT(*) FROM {table}")
-            ).scalar_one()
-            expected_count = len(rows)
+    for path in files_matching(source_dir, table["file_prefix"]):
+        rows = read_rows(path, load_id)
+        merge_rows(conn, table["sql_file"], rows)
+        read = read + len(rows)
+    after = count_rows(conn, name)
+    touched = count_touched(conn, name, load_id)
+    inserted = after - before
+    updated = touched - inserted
+    return {
+        "table": name, 
+        "before": before, 
+        "read": read, 
+        "inserted": inserted, 
+        "updated": updated, 
+        "after": after
+    }
 
-            if db_count != expected_count:
-                raise RuntimeError(f"Failed reconciliation for '{table}': expected {expected_count} rows, got {db_count}")
-            counts[table] = db_count
 
-        conn.execute(
-            sa.text(
-                "UPDATE load_batches SET load_status = 'succeeded', completed_at = NOW() WHERE load_id = :load_id"
-            ),
-            {"load_id": load_id},
-        )
+def load_all(conn, source_dir):
+    """Carrega todos os ficheiros de todas as tabelas, numa só transação."""
+    load_id = conn.execute(
+        sa.text("INSERT INTO load_batches DEFAULT VALUES RETURNING load_id")
+    ).scalar_one()
 
-    return counts
+    summaries = []
+    for table in TARGET_TABLES:
+        summaries = summaries + [load_table(conn, table, source_dir, load_id)]
+    
+    conn.execute(
+        sa.text(
+            "UPDATE load_batches "
+            "SET load_status = 'succeeded', completed_at = clock_timestamp() "
+            "WHERE load_id = :load_id"
+        ),
+        {"load_id": load_id},
+    )
+    return summaries
