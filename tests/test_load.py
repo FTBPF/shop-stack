@@ -17,7 +17,14 @@ EXPECTED_COUNTS = {
 
 
 def get_last_load_id(conn):
-    rows = db.query(conn, "SELECT MAX(load_id) AS load_id FROM load_batches")
+    rows = db.query(conn,
+        """
+        SELECT load_id
+        FROM load_batches
+        ORDER BY started_at DESC
+        LIMIT 1
+        """,
+    )
     return rows[0]["load_id"]
 
 

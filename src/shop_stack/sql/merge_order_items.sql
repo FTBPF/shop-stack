@@ -7,7 +7,7 @@ USING (
         CAST(:status AS TEXT) AS status,
         CAST(:created_at AS TIMESTAMPTZ) AS created_at,
         CAST(:sale_price AS NUMERIC(10, 2)) AS sale_price,
-        CAST(:load_id AS INT) AS load_id
+        CAST(:load_id AS UUID) AS load_id
 ) AS s
 ON t.id = s.id
 WHEN MATCHED THEN

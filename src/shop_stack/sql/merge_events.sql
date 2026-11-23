@@ -7,7 +7,7 @@ USING (
         CAST(:sequence_number AS INT) AS sequence_number,
         CAST(:created_at AS TIMESTAMPTZ) AS created_at,
         CAST(:event_type AS TEXT) AS event_type,
-        CAST(:load_id AS INT) AS load_id
+        CAST(:load_id AS UUID) AS load_id
 ) AS s
 ON t.id = s.id
 WHEN MATCHED THEN

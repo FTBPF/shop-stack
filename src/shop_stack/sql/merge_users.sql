@@ -6,7 +6,7 @@ USING (
         CAST(:country AS TEXT) AS country,
         CAST(:traffic_source AS TEXT) AS traffic_source,
         CAST(:created_at AS TIMESTAMPTZ) AS created_at,
-        CAST(:load_id AS INT) AS load_id
+        CAST(:load_id AS UUID) AS load_id
 ) AS s
 ON t.id = s.id
 WHEN MATCHED THEN

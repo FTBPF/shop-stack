@@ -8,7 +8,7 @@ USING (
         CAST(:department AS TEXT) AS department,
         CAST(:cost AS NUMERIC(10, 2)) AS cost,
         CAST(:retail_price AS NUMERIC(10, 2)) AS retail_price,
-        CAST(:load_id AS INT) AS load_id
+        CAST(:load_id AS UUID) AS load_id
 ) AS s
 ON t.id = s.id
 WHEN MATCHED THEN

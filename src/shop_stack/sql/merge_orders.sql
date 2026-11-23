@@ -5,7 +5,7 @@ USING (
         CAST(:user_id AS INT) AS user_id,
         CAST(:status AS TEXT) AS status,
         CAST(:created_at AS TIMESTAMPTZ) AS created_at,
-        CAST(:load_id AS INT) AS load_id
+        CAST(:load_id AS UUID) AS load_id
 ) AS s
 ON t.order_id = s.order_id
 WHEN MATCHED THEN

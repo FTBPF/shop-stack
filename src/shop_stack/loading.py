@@ -1,6 +1,8 @@
-from pathlib import Path
+import datetime as dt
 import duckdb
+from pathlib import Path
 import sqlalchemy as sa
+import uuid
 
 SQL_DIR = Path(__file__).parent / "sql"
 
@@ -106,10 +108,19 @@ def load_all(conn, source_dir):
     if not source_dir.is_dir():
         raise FileNotFoundError(f"Directory not found: {source_dir}")
     
-    load_id = conn.execute(
-        sa.text("INSERT INTO load_batches DEFAULT VALUES RETURNING load_id")
-    ).scalar_one()
+    load_id = uuid.uuid7()
+    load_ts = dt.datetime.now(tz=dt.UTC)
 
+    conn.execute(
+        sa.text(
+            """
+            INSERT INTO load_batches (load_id, started_at)
+            VALUES (:load_id, :load_ts)
+            """
+        ),
+        {"load_id": load_id, "load_ts": load_ts},
+    )
+    
     summaries = []
     for table in TARGET_TABLES:
         summaries = summaries + [load_table(conn, table, source_dir, load_id)]
