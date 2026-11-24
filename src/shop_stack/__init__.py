@@ -1,8 +1,9 @@
 import click
+import duckdb
 from pathlib import Path
-from sqlalchemy.exc import OperationalError, IntegrityError
+from sqlalchemy.exc import OperationalError
 
-from . import db, loading, warehouse as wh
+from . import db, loading, reports, warehouse as wh
 
 
 @click.group()
@@ -82,6 +83,32 @@ def build(warehouse):
     """Build the analytical warehouse."""
     try:
         wh.build_warehouse(warehouse)
+    except duckdb.CatalogException:
+        raise click.ClickException("Missing tables in PostgreSQL, run `shop db init` first.")
     except Exception as e:
         raise click.ClickException(f"Failed to build the warehouse: {e}")
     click.echo("Warehouse built successfully.")
+
+
+@main.command()
+@click.argument(
+    "metric",
+    type=click.Choice(["revenue", "margin", "returns", "sources"]),
+)
+@click.option(
+    "--warehouse",
+    default="warehouse.duckdb",
+    show_default=True,
+    help="Path to the DuckDB warehouse.",
+)
+def report(metric, warehouse):
+    """Run one report against the DuckDB warehouse."""
+    if not Path(warehouse).exists():
+        raise click.ClickException(f"Warehouse not found: {warehouse}. Run `shop build` first.")
+    try:
+        rows = reports.run_report(warehouse, metric)
+    except Exception as e:
+        raise click.ClickException(f"Failed to run the report: {e}")
+    click.echo(f"{metric} report:")
+    for row in rows:
+        click.echo("\t".join(str(value) for value in row))
