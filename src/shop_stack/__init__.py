@@ -2,7 +2,7 @@ import click
 from pathlib import Path
 from sqlalchemy.exc import OperationalError, IntegrityError
 
-from . import db, loading
+from . import db, loading, warehouse as wh
 
 
 @click.group()
@@ -59,7 +59,7 @@ def load(source):
         try:
             summaries = loading.load_all(conn, source)
         except Exception as e:
-            raise click.ClickException(str(e))
+            raise click.ClickException(f"Failed to load the files: {e}")
         for summary in summaries:
              click.echo(
                 f"{summary['table']}: "
@@ -69,3 +69,19 @@ def load(source):
                 f"updated {summary['updated']}, "
                 f"after {summary['after']}."
              )
+
+
+@main.command()
+@click.option(
+    "--warehouse",
+    default="warehouse.duckdb",
+    show_default=True,
+    help="Path to the DuckDB warehouse.",
+)
+def build(warehouse):
+    """Build the analytical warehouse."""
+    try:
+        wh.build_warehouse(warehouse)
+    except Exception as e:
+        raise click.ClickException(f"Failed to build the warehouse: {e}")
+    click.echo("Warehouse built successfully.")
