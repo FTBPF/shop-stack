@@ -105,4 +105,9 @@ def report(metric, warehouse):
         report_df = reports.run_report(warehouse, metric)
     except Exception as e:
         raise click.ClickException(f"Failed to run the report: {e}")
+    if report_df.empty:
+        raise click.ClickException(
+            "No data available. Run `shop load --source fixtures` "
+            "to load data, then `shop build` to rebuild the warehouse."
+        )
     click.echo(report_df)
