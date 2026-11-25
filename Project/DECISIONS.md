@@ -83,9 +83,9 @@ CONSTRAINT ck_orders_status CHECK (status IN (
 
 After inspecting the distinct statuses in the source data, these five values were identified.
 
-Since these statuses represent established order states and are not expected to change frequently, the decision was to treat them as a controlled set of valid states rather than allowing arbitrary text values.
+Since these statuses represent established order states and are not expected to change, the decision was to treat them as a controlled set of valid states rather than allowing arbitrary text values.
 
-If a new status is introduced, the CHECK constraint must be updated and the schema change applied. This requires an intentional change, but is considered acceptable given the expected stability of order statuses.
+If a new status is introduced, the CHECK constraint must be updated and the schema change applied. This requires an intentional change.
 
 ## 4. Order Items
 
@@ -209,5 +209,3 @@ This provides traceability between the data and the ETL execution that processed
 By joining a record with `load_batches`, it is possible to retrieve the timestamp and status of the batch associated with its most recent load.
 
 The trade-off is that only the most recent batch association is retained on each record. Previous associations are not preserved when a record is updated.
-
-A separate audit or history table could be introduced in the future if tracking every historical change becomes necessary.
