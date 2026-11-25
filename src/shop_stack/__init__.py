@@ -1,7 +1,8 @@
 import click
 import duckdb
+import pandas as pd
 from pathlib import Path
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from . import db, loading, reports, warehouse as wh
 
@@ -59,17 +60,12 @@ def load(source):
     with engine.begin() as conn:
         try:
             summaries = loading.load_all(conn, source)
+        except ProgrammingError as e:
+            raise click.ClickException(f"Database schema not found. Run `shop db init` first.")
         except Exception as e:
             raise click.ClickException(f"Failed to load the files: {e}")
-        for summary in summaries:
-             click.echo(
-                f"{summary['table']}: "
-                f"before {summary['before']}, "
-                f"read {summary['read']}, "
-                f"inserted {summary['inserted']}, "
-                f"updated {summary['updated']}, "
-                f"after {summary['after']}."
-             )
+    load_df = pd.DataFrame(summaries).set_index("table")
+    click.echo(load_df)
 
 
 @main.command()
@@ -106,9 +102,7 @@ def report(metric, warehouse):
     if not Path(warehouse).exists():
         raise click.ClickException(f"Warehouse not found: {warehouse}. Run `shop build` first.")
     try:
-        rows = reports.run_report(warehouse, metric)
+        report_df = reports.run_report(warehouse, metric)
     except Exception as e:
         raise click.ClickException(f"Failed to run the report: {e}")
-    click.echo(f"{metric} report:")
-    for row in rows:
-        click.echo("\t".join(str(value) for value in row))
+    click.echo(report_df)

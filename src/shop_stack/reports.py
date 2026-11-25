@@ -5,31 +5,31 @@ THIS_DIR = Path(__file__).parent
 REPORTS_DIR = THIS_DIR / "sql" / "reports"
 
 
-def run_db_query(conn, report_name):
+def run_duck_query(conn, report_name):
     sql_path = REPORTS_DIR / f"{report_name}.sql"
     sql = sql_path.read_text()
 
-    return conn.execute(sql).fetchall()
+    return conn.execute(sql).df()
 
 
 def get_revenue(conn):
     """Returns the revenue report."""
-    return run_db_query(conn, "revenue")
+    return run_duck_query(conn, "revenue")
 
 
 def get_margin(conn):
     """Returns the gross margin report."""
-    return run_db_query(conn, "margin")
+    return run_duck_query(conn, "margin")
 
 
 def get_returns(conn):
     """Returns the returns report."""
-    return run_db_query(conn, "returns")
+    return run_duck_query(conn, "returns")
 
 
 def get_sources(conn):
     """Returns the revenue by traffic source report."""
-    return run_db_query(conn, "sources")
+    return run_duck_query(conn, "sources")
 
 
 def run_report(warehouse_path, metric):
