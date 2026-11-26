@@ -4,6 +4,8 @@
 
   The project provides a command-line interface (CLI) to manage the database schema and load data into the database.
 
+  For a detailed explanation of the project's technical decisions and implementation choices, see `project/DECISIONS.md`.
+
   ## Requirements
 
   - Python 3.14+
@@ -39,7 +41,9 @@
   export PGDATABASE=
   ```
 
-  These variables are used by the database connection to determine where to connect and which credentials to use.
+  These variables are used by Shop Stack to determine where to connect and which credentials to use.
+
+  For a complete list of available PostgreSQL environment variables and their descriptions, refer to the [PostgreSQL documentation - Environment Variables](https://www.postgresql.org/docs/current/libpq-envars.html).
 
   ## CLI Commands
 
@@ -48,7 +52,7 @@
 
   ### `shop db init`
 
-  Creates the database schema required by Shop Stack.
+  Creates the PostgreSQL database schema required by Shop Stack.
 
   ```bash
   uv run shop db init
@@ -58,7 +62,7 @@
 
   ### `shop db drop`
 
-  Drops the database schema created by Shop Stack.
+  Drops the PostgreSQL database schema created by Shop Stack.
 
   ```bash
   uv run shop db drop
@@ -106,6 +110,20 @@
   5. Reports the number of records read, inserted and updated for each table.
   6. Marks the load batch as successful when the process completes.
 
+  The loader identifies which database table each file belongs to through its filename prefix. For each target table, it searches for files following the naming convention `{table_name}*.csv` or `{table_name}*.parquet`.
+
+  For example:
+
+  - `users.csv` or `users.parquet` → loaded into the `users` table.
+  - `products.csv` or `products.parquet` → loaded into the `products` table.
+  - `orders.csv` or `orders.parquet` → loaded into the `orders` table.
+  - `order_items.csv` or `order_items.parquet` → loaded into the `order_items` table.
+  - `events.csv` or `events.parquet` → loaded into the `events` table.
+
+  The `*` wildcard allows additional text in the filename, such as `users-2026-10-01.csv` or `users_part1.parquet`.
+
+  The loader supports both CSV and Parquet formats. Files that do not match one of the expected table prefixes are ignored.
+
   The loading process supports the following tables:
 
   - `users`
@@ -137,8 +155,12 @@
   │       ├── sql/
   │       ├── db.py
   │       ├── loading.py
+  │       ├── reports.py
+  │       ├── warehouse.py
   │       └── __init__.py
   ├── tests/
+  ├── project/
+  │   └── DECISIONS.md
   ├── fixtures/
   ├── pyproject.toml
   └── README.md
@@ -147,5 +169,8 @@
   - `sql/` – SQL scripts used for database operations and data merging.
   - `db.py` – Database connection and schema management.
   - `loading.py` – Data loading and ETL logic.
+  - `warehouse.py` – Builds the DuckDB data warehouse by extracting and transforming data from PostgreSQL into a star schema.
+  - `reports.py` – Executes analytical SQL reports against the DuckDB warehouse and returns the results.
   - `tests/` – Automated tests.
+  - `project/DECISIONS.md` – Documents the technical decisions and implementation choices made throughout the project.
   - `fixtures/` – Sample data files used for testing.
