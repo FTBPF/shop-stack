@@ -103,14 +103,7 @@ def load_table(conn, table, source_dir, load_id):
     }
 
 
-def load_all(conn, source_dir):
-    """Carrega todos os ficheiros de todas as tabelas, numa só transação."""
-    if not source_dir.is_dir():
-        raise FileNotFoundError(f"Directory not found: {source_dir}")
-    
-    load_id = uuid.uuid7()
-    load_ts = dt.datetime.now(tz=dt.UTC)
-
+def start_load_batch(conn, load_id, load_ts):
     conn.execute(
         sa.text(
             """
@@ -120,17 +113,37 @@ def load_all(conn, source_dir):
         ),
         {"load_id": load_id, "load_ts": load_ts},
     )
-    
-    summaries = []
-    for table in TARGET_TABLES:
-        summaries = summaries + [load_table(conn, table, source_dir, load_id)]
-    
+
+
+def finish_load_batch(conn, load_id):
     conn.execute(
         sa.text(
-            "UPDATE load_batches "
-            "SET load_status = 'succeeded', completed_at = clock_timestamp() "
-            "WHERE load_id = :load_id"
+            """
+            UPDATE load_batches
+            SET load_status = 'succeeded',
+                completed_at = clock_timestamp()
+            WHERE load_id = :load_id
+            """
         ),
         {"load_id": load_id},
     )
+
+
+def load_all(conn, source_dir):
+    """Carrega todos os ficheiros de todas as tabelas, numa só transação."""
+    if not source_dir.is_dir():
+        raise FileNotFoundError(f"Directory not found: {source_dir}")
+    
+    load_id = uuid.uuid7()
+    load_ts = dt.datetime.now(tz=dt.UTC)
+
+    start_load_batch(conn, load_id, load_ts)
+    
+    summaries = [
+        load_table(conn, table, source_dir, load_id)
+        for table in TARGET_TABLES
+    ]
+    
+    finish_load_batch(conn, load_id)
+
     return summaries
