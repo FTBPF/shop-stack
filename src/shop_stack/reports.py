@@ -32,6 +32,14 @@ def get_sources(conn):
     return run_duck_query(conn, "sources")
 
 
+def get_funnel(conn):
+    return run_duck_query(conn, "funnel")
+
+
+def get_retention(conn):
+    return run_duck_query(conn, "retention")
+
+
 def run_report(warehouse_path, metric):
     """Runs one report against the DuckDB warehouse."""
 
@@ -40,6 +48,8 @@ def run_report(warehouse_path, metric):
         "margin": get_margin,
         "returns": get_returns,
         "sources": get_sources,
+        "funnel": get_funnel,
+        "retention": get_retention,
     }
 
     with duckdb.connect(str(warehouse_path), read_only=True) as conn:

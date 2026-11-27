@@ -89,7 +89,7 @@ def build(warehouse):
 @main.command()
 @click.argument(
     "metric",
-    type=click.Choice(["revenue", "margin", "returns", "sources"]),
+    type=click.Choice(["revenue", "margin", "returns", "sources", "funnel", "retention"]),
 )
 @click.option(
     "--warehouse",
