@@ -71,6 +71,7 @@ def test_sources(built_warehouse):
 
 
 def test_retention(built_warehouse):
+    # Março está separado por causa dos <NA>
     result = reports.run_report(built_warehouse, "retention")
 
     actual = {
@@ -83,14 +84,23 @@ def test_retention(built_warehouse):
             row.retention_pct,
         )
         for row in result.itertuples()
+        if not pd.isna(row.months_since_cohort)
     }
 
     assert actual == {
         ("2025-01", 1): (2, 1, 50.0),
         ("2025-01", 2): (2, 2, 100.0),
         ("2025-02", 1): (1, 1, 100.0),
-        ("2025-03", None): (1, None, None),
     }
+
+    march = result[
+        result["cohort_month"].dt.month == 3
+    ].iloc[0]
+
+    assert march.customer_count == 1
+    assert pd.isna(march.months_since_cohort)
+    assert pd.isna(march.returning_customers)
+    assert pd.isna(march.retention_pct)
 
 
 def test_funnel(built_warehouse):
